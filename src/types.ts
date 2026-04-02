@@ -38,6 +38,15 @@ export interface UserProfile {
   role: 'admin' | 'seller';
 }
 
+export interface LoginAlert {
+  id: string;
+  uid: string;
+  name: string;
+  email: string;
+  role: 'admin' | 'seller';
+  timestamp?: any;
+}
+
 export interface CustomerProfile {
   id: string;
   name: string;

@@ -123,6 +123,12 @@ match /customers/{customerId} {
       allow delete: if isAdmin();
     }
 
+    match /loginAlerts/{alertId} {
+      allow read: if isAdmin();
+      allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
     match /settings/{settingId} {
       allow read: if isAuthenticated();
       allow create, update, delete: if isAdmin();

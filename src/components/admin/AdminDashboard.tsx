@@ -1,14 +1,15 @@
-import { Sale } from '../../types';
+import { Sale, LoginAlert } from '../../types';
 import { format, isSameDay, isSameMonth } from 'date-fns';
 import { ArrowRight } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 
 interface Props {
   sales: Sale[];
+  loginAlerts: LoginAlert[];
   onNavigate: (tab: 'products' | 'sellers' | 'buyers' | 'sales') => void;
 }
 
-export default function AdminDashboard({ sales, onNavigate }: Props) {
+export default function AdminDashboard({ sales, loginAlerts, onNavigate }: Props) {
   const dailyData = Array.from({ length: 7 }, (_, i) => {
     const d = new Date();
     d.setDate(d.getDate() - i);
@@ -36,6 +37,31 @@ export default function AdminDashboard({ sales, onNavigate }: Props) {
 
   return (
     <div className="space-y-8">
+      {loginAlerts.length > 0 && (
+        <div className="bg-neutral-900 text-white rounded-2xl p-5 shadow-xl border border-neutral-800">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1">Admin Alert</p>
+              <h4 className="text-lg font-bold">New login detected</h4>
+            </div>
+            <div className="text-xs text-white/50 uppercase tracking-widest">
+              Showing latest {Math.min(3, loginAlerts.length)} UID alert{loginAlerts.length > 1 ? 's' : ''}
+            </div>
+          </div>
+          <div className="mt-4 space-y-3">
+            {loginAlerts.slice(0, 3).map((alert) => (
+              <div key={alert.id} className="bg-white/5 border border-white/10 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <div>
+                  <p className="text-sm font-bold">{alert.name}</p>
+                  <p className="text-xs text-white/60">{alert.email} · {alert.role}</p>
+                </div>
+                <div className="text-xs text-orange-300 font-mono break-all">UID: {alert.uid}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
         {statCards.map(({ label, value }) => (
           <div key={label} className="bg-white p-6 rounded-2xl border border-neutral-200 shadow-sm flex flex-col justify-between">

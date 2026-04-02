@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, query } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { Product, UserProfile, Sale, CustomerProfile } from '../types';
+import { Product, UserProfile, Sale, CustomerProfile, LoginAlert } from '../types';
 
 import AdminSidebar from '../components/admin/AdminSidebar';
 import AdminDashboard from '../components/admin/AdminDashboard';
@@ -22,6 +22,7 @@ export default function AdminPage() {
   const [sellers, setSellers] = useState<UserProfile[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
   const [customers, setCustomers] = useState<CustomerProfile[]>([]);
+  const [loginAlerts, setLoginAlerts] = useState<LoginAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [printBarcodeData, setPrintBarcodeData] = useState<string | null>(null);
   const [batchPrintData, setBatchPrintData] = useState<string[] | null>(null);
@@ -47,8 +48,17 @@ export default function AdminPage() {
       snapshot => setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CustomerProfile))),
       err => handleFirestoreError(err, OperationType.LIST, 'customers')
     );
+    const unsubLoginAlerts = onSnapshot(
+      query(collection(db, 'loginAlerts')),
+      snapshot => setLoginAlerts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as LoginAlert)).sort((a, b) => {
+        const aTime = a.timestamp?.seconds || 0;
+        const bTime = b.timestamp?.seconds || 0;
+        return bTime - aTime;
+      })),
+      err => handleFirestoreError(err, OperationType.LIST, 'loginAlerts')
+    );
     setLoading(false);
-    return () => { unsubProducts(); unsubUsers(); unsubSales(); unsubCustomers(); };
+    return () => { unsubProducts(); unsubUsers(); unsubSales(); unsubCustomers(); unsubLoginAlerts(); };
   }, []);
 
   if (loading) {
@@ -73,7 +83,7 @@ export default function AdminPage() {
 
         <main className="flex-1 overflow-x-hidden overflow-y-auto px-4 pt-20 pb-4 sm:px-6 sm:pt-24 sm:pb-6 lg:p-8">
           {activeTab === 'dashboard' && (
-            <AdminDashboard sales={sales} onNavigate={setActiveTab} />
+            <AdminDashboard sales={sales} loginAlerts={loginAlerts} onNavigate={setActiveTab} />
           )}
           {activeTab === 'products' && (
             <AdminProducts

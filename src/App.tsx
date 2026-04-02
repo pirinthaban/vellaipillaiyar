@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { onAuthStateChanged } from 'firebase/auth';
-import { collection, doc, getDoc, getDocs, limit, query } from 'firebase/firestore';
+import { addDoc, collection, doc, getDoc, getDocs, limit, query, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { UserProfile } from './types';
 
@@ -26,6 +26,13 @@ export default function App() {
     };
     const { setDoc } = await import('firebase/firestore');
     await setDoc(doc(db, 'users', firebaseUser.uid), data);
+    await addDoc(collection(db, 'loginAlerts'), {
+      uid: firebaseUser.uid,
+      name: data.name,
+      email: data.email,
+      role,
+      timestamp: serverTimestamp(),
+    });
     return { uid: firebaseUser.uid, ...data } as UserProfile;
   };
 
@@ -76,8 +83,11 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-neutral-50">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      <div className="flex items-center justify-center h-screen bg-neutral-50 text-neutral-900">
+        <div className="flex flex-col items-center gap-3">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-neutral-900 border-t-transparent"></div>
+          <p className="text-xs font-bold uppercase tracking-widest text-neutral-500">Loading app...</p>
+        </div>
       </div>
     );
   }

@@ -47,7 +47,11 @@ export default function LoginPage() {
         }
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to login');
+      if (err?.code === 'auth/unauthorized-domain') {
+        setError('Login blocked: this website domain is not authorized in Firebase Authentication settings.');
+      } else {
+        setError(err.message || 'Failed to login');
+      }
     } finally {
       setLoading(false);
     }
