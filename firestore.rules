@@ -1,0 +1,131 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: products
+    // Fields:
+    //   - name: string (required, 1-100 chars)
+    //   - category: string (required, enum: paint, wiring, electrical, oils, pipeline, construction)
+    //   - price: number (required, positive)
+    //   - stock: number (required, non-negative)
+    //   - image: string (optional, URL)
+    //   - barcode: string (optional, 1-50 chars)
+    //   - description: string (optional, 0-1000 chars)
+    //
+    // Collection: users
+    // Fields:
+    //   - name: string (required, 1-100 chars)
+    //   - email: string (required, valid email)
+    //   - role: string (required, enum: admin, seller)
+    //
+    // Collection: sales
+    // Fields:
+    //   - items: list (required, non-empty)
+    //   - total: number (required, positive)
+    //   - sellerId: string (required, matches auth.uid)
+    //   - timestamp: timestamp (required)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        (request.auth.uid == "nj1XZUzlcAWTJIOWRWEFBsimB3q2") ||
+        (request.auth.token.email == "www.vertexwebsolutions@gmail.com" && request.auth.token.email_verified == true)
+      );
+    }
+
+    function isValidProduct(data) {
+      let categories = ['paint', 'wiring', 'electrical', 'oils', 'pipeline', 'construction'];
+      let units = ['qty', 'kg', 'lb', 'ft', 'm', 'yd', 'pc'];
+      let allowedFields = ['name', 'category', 'price', 'stock', 'image', 'barcode', 'description', 'discountPrice', 'offerLabel', 'unit', 'variations', 'costPrice', 'published'];
+
+      return data.keys().hasAll(['name', 'category', 'price', 'stock']) &&      
+             data.keys().hasOnly(allowedFields) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.category in categories &&
+             data.price is number && data.price >= 0 &&
+             data.stock is number && data.stock >= 0 &&
+             (!('image' in data) || (data.image is string && data.image.size() <= 1000)) &&
+             (!('barcode' in data) || (data.barcode is string && data.barcode.size() <= 100)) &&
+             (!('description' in data) || (data.description is string && data.description.size() <= 2000)) &&
+             (!('discountPrice' in data) || (data.discountPrice is number && data.discountPrice >= 0)) &&
+             (!('offerLabel' in data) || (data.offerLabel is string && data.offerLabel.size() <= 100)) &&
+             (!('unit' in data) || (data.unit in units)) &&
+             (!('costPrice' in data) || (data.costPrice is number && data.costPrice >= 0)) &&
+             (!('published' in data) || (data.published is bool)) &&
+             (!('variations' in data) || (data.variations is list && data.variations.size() <= 50));
+    }
+
+    function isValidSale(data) {
+          let allowedFields = ['items', 'total', 'profit', 'sellerId', 'timestamp', 'customer', 'vp'];
+          return data.keys().hasAll(['items', 'total', 'sellerId', 'timestamp']) &&
+            data.keys().hasOnly(allowedFields) &&
+             data.items is list && data.items.size() > 0 &&
+            data.total is number && data.total >= 0 &&
+             data.sellerId == request.auth.uid;
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['name', 'email', 'role']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.email is string && data.email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$") &&
+             data.role in ['admin', 'seller'];
+    }
+
+    // ===============================================================
+    // Match Blocks
+    // ===============================================================
+
+    match /products/{productId} {
+      // Public read for the showcase website
+      allow read: if true;
+      allow create: if isAdmin() && isValidProduct(request.resource.data);
+      // Allow any authenticated user to update stock/variations (for POS checkout)
+      allow update: if isAdmin() ||
+                      (isAuthenticated() &&
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock', 'variations']) &&
+                       request.resource.data.stock is number && request.resource.data.stock >= 0);
+      allow delete: if isAdmin();
+    }
+
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow create: if (isAdmin() || (request.auth.uid == userId && (request.auth.token.email == "www.vertexwebsolutions@gmail.com" || request.auth.token.email == "www.pirinthaban@gmail.com"))) && isValidUser(request.resource.data);
+      allow update: if isAdmin() && isValidUser(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+match /customers/{customerId} {
+      allow read: if true; // Buyers need to check their VP status on the public page
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAdmin();
+    }
+
+    match /sales/{saleId} {
+      // Sales reads must be public if finding fallback points across unverified orders via phone number
+      allow read: if true;
+      // Allow any authenticated user to create a sale (all app users are staff)
+      allow create: if isAuthenticated() && isValidSale(request.resource.data); 
+      allow update: if false; // Sales are immutable
+      allow delete: if isAdmin();
+    }
+
+    match /settings/{settingId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAdmin();
+    }
+  }
+}

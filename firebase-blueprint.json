@@ -1,0 +1,67 @@
+{
+  "entities": {
+    "Product": {
+      "title": "Product",
+      "description": "A hardware store item.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Product name" },
+        "category": { "type": "string", "description": "Category (paint, wiring, etc.)" },
+        "price": { "type": "number", "description": "Price per unit" },
+        "stock": { "type": "number", "description": "Current stock level" },
+        "image": { "type": "string", "description": "Image URL" },
+        "barcode": { "type": "string", "description": "Barcode value" },
+        "description": { "type": "string", "description": "Product description" },
+        "discountPrice": { "type": "number", "description": "Discounted price" },
+        "offerLabel": { "type": "string", "description": "Offer label (e.g. 10% OFF)" },
+        "unit": { "type": "string", "enum": ["qty", "kg", "lb", "ft", "m", "yd", "pc"], "description": "Measurement unit" },
+        "variations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "name": { "type": "string" },
+              "price": { "type": "number" },
+              "stock": { "type": "number" },
+              "barcode": { "type": "string" },
+              "discountPrice": { "type": "number" },
+              "offerLabel": { "type": "string" },
+              "unit": { "type": "string" }
+            }
+          },
+          "description": "Product variations"
+        }
+      },
+      "required": ["name", "category", "price", "stock"]
+    },
+    "User": {
+      "title": "User",
+      "description": "Application user with role.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "User's full name" },
+        "email": { "type": "string", "description": "User's email" },
+        "role": { "type": "string", "enum": ["admin", "seller"], "description": "User's role" }
+      },
+      "required": ["name", "email", "role"]
+    },
+    "Sale": {
+      "title": "Sale",
+      "description": "A completed transaction.",
+      "type": "object",
+      "properties": {
+        "items": { "type": "array", "description": "List of sold items" },
+        "total": { "type": "number", "description": "Total sale amount" },
+        "sellerId": { "type": "string", "description": "UID of the seller" },
+        "timestamp": { "type": "string", "format": "date-time", "description": "Time of sale" }
+      },
+      "required": ["items", "total", "sellerId", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/products/{productId}": { "schema": "Product", "description": "Store products" },
+    "/users/{userId}": { "schema": "User", "description": "User profiles and roles" },
+    "/sales/{saleId}": { "schema": "Sale", "description": "Transaction history" }
+  }
+}
