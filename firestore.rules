@@ -69,7 +69,7 @@ service cloud.firestore {
     function isValidProduct(data) {
       let categories = ['paint', 'wiring', 'electrical', 'oils', 'pipeline', 'construction'];
       let units = ['qty', 'kg', 'lb', 'ft', 'm', 'yd', 'pc'];
-      let allowedFields = ['name', 'category', 'price', 'stock', 'image', 'barcode', 'description', 'discountPrice', 'offerLabel', 'unit', 'variations', 'costPrice', 'published'];
+      let allowedFields = ['name', 'category', 'price', 'stock', 'image', 'images', 'barcode', 'description', 'discountPrice', 'offerLabel', 'unit', 'variations', 'costPrice', 'published'];
 
       return data.keys().hasAll(['name', 'category', 'price', 'stock']) &&      
              data.keys().hasOnly(allowedFields) &&
@@ -78,6 +78,7 @@ service cloud.firestore {
              data.price is number && data.price >= 0 &&
              data.stock is number && data.stock >= 0 &&
              (!('image' in data) || (data.image is string && data.image.size() <= 1000)) &&
+             (!('images' in data) || (data.images is list && data.images.size() <= 20)) &&
              (!('barcode' in data) || (data.barcode is string && data.barcode.size() <= 100)) &&
              (!('description' in data) || (data.description is string && data.description.size() <= 2000)) &&
              (!('discountPrice' in data) || (data.discountPrice is number && data.discountPrice >= 0)) &&
