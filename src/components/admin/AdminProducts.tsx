@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { collection, addDoc, updateDoc, deleteDoc, doc, writeBatch } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../../firebase';
+import { db, auth, handleFirestoreError, OperationType } from '../../firebase';
 import { Product, Category, Variation } from '../../types';
 import { Plus, Trash2, Edit2, Search, Printer, Upload, Barcode, X, Download, Package } from 'lucide-react';
 import { format } from 'date-fns';
@@ -212,7 +212,14 @@ export default function AdminProducts({ products, onPrintSingle, onPrintBatch }:
             }
           })()
         : '';
-      setError(parsed || err?.message || 'Failed to save product. Please try again.');
+      const rawMessage = parsed || err?.message || 'Failed to save product. Please try again.';
+      if (rawMessage.toLowerCase().includes('insufficient permissions') || rawMessage.toLowerCase().includes('permission')) {
+        const uid = auth.currentUser?.uid || 'unknown-uid';
+        const email = auth.currentUser?.email || 'unknown-email';
+        setError(`Permission denied. Publish latest Firestore rules and ensure users/${uid} has role 'admin' or 'seller'. Current login: ${email}`);
+        return;
+      }
+      setError(rawMessage);
     }
   };
 
