@@ -49,12 +49,21 @@ service cloud.firestore {
         : '';
     }
 
+    function isWhitelistedAdminEmail() {
+      return isAuthenticated()
+        && request.auth.token.email_verified == true
+        && request.auth.token.email in [
+          "www.pirinthaban@gmail.com",
+          "www.vertexwebsolutions@gmail.com"
+        ];
+    }
+
     function isAdmin() {
-      return currentUserRole() == 'admin';
+      return currentUserRole() == 'admin' || isWhitelistedAdminEmail();
     }
 
     function isStaff() {
-      return currentUserRole() in ['admin', 'seller'];
+      return currentUserRole() in ['admin', 'seller'] || isWhitelistedAdminEmail();
     }
 
     function isValidProduct(data) {
