@@ -196,20 +196,23 @@ export default function AdminProducts({ products, onPrintSingle, onPrintBatch }:
       if (editingProduct) {
         await updateDoc(doc(db, 'products', editingProduct.id), normalizedProduct);
       } else {
-        const existing = products.find(p => p.barcode === normalizedProduct.barcode && normalizedProduct.barcode !== '');
-        if (existing) {
-          await updateDoc(doc(db, 'products', existing.id), {
-            stock: existing.stock + (normalizedProduct.stock || 0),
-          });
-        } else {
-          await addDoc(collection(db, 'products'), normalizedProduct);
-        }
+        await addDoc(collection(db, 'products'), normalizedProduct);
       }
       setIsAdding(false);
       setEditingProduct(null);
       setNewProduct({ ...EMPTY_PRODUCT });
-    } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, 'products');
+    } catch (err: any) {
+      console.error(err);
+      const parsed = typeof err?.message === 'string' && err.message.startsWith('{')
+        ? (() => {
+            try {
+              return JSON.parse(err.message).error as string;
+            } catch {
+              return '';
+            }
+          })()
+        : '';
+      setError(parsed || err?.message || 'Failed to save product. Please try again.');
     }
   };
 
