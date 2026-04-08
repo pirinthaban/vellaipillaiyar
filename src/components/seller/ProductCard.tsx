@@ -7,6 +7,8 @@ interface Props {
 }
 
 export default function ProductCard({ product: p, onSelect }: Props) {
+  const primaryImage = p.images?.[0] || p.image || '';
+
   return (
     <button
       onClick={() => onSelect(p)}
@@ -14,8 +16,8 @@ export default function ProductCard({ product: p, onSelect }: Props) {
       className={`flex flex-col text-left bg-white p-4 rounded-2xl border border-neutral-200 shadow-sm hover:shadow-md transition-all group ${p.stock <= 0 ? 'opacity-50 grayscale cursor-not-allowed' : ''}`}
     >
       <div className="w-full aspect-square bg-neutral-100 rounded-xl mb-3 flex items-center justify-center overflow-hidden">
-        {p.image ? (
-          <img src={p.image} alt={p.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+        {primaryImage ? (
+          <img src={primaryImage} alt={p.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
         ) : (
           <ShoppingCart size={32} className="text-neutral-300" />
         )}

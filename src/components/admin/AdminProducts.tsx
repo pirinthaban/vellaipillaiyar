@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { collection, addDoc, updateDoc, deleteDoc, doc, writeBatch } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
-import { Product, Category } from '../../types';
+import { Product, Category, Variation } from '../../types';
 import { Plus, Trash2, Edit2, Search, Printer, Upload, Barcode, X, Download, Package } from 'lucide-react';
 import { format } from 'date-fns';
 import BarcodeGenerator from 'react-barcode';
@@ -20,6 +20,7 @@ export default function AdminProducts({ products, onPrintSingle, onPrintBatch }:
   const [isAdding, setIsAdding] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const [newProduct, setNewProduct] = useState<Partial<Product>>({ ...EMPTY_PRODUCT });
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
@@ -68,42 +69,52 @@ export default function AdminProducts({ products, onPrintSingle, onPrintBatch }:
       variations[variationIdx].barcode = code;
       setNewProduct({ ...newProduct, variations });
     } else {
-      setNewProduct(prev => ({ ...prev, barcode: code }));
+      setNewProduct((prev: Partial<Product>) => ({ ...prev, barcode: code }));
     }
   };
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const uploadProductImages = async (files: File[]) => {
+    if (files.length === 0) return;
     setUploading(true);
     try {
-      // You must create a Cloudinary account, get your Cloud Name, and create an "Unsigned" Upload Preset.
       const CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || 'YOUR_CLOUD_NAME_HERE';
       const UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || 'YOUR_UNSIGNED_PRESET_HERE';
 
-      if (CLOUD_NAME === 'YOUR_CLOUD_NAME_HERE') {
+      if (CLOUD_NAME === 'YOUR_CLOUD_NAME_HERE' || UPLOAD_PRESET === 'YOUR_UNSIGNED_PRESET_HERE') {
         throw new Error('Please configure your Cloudinary Cloud Name & Upload Preset in code or .env');
       }
 
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('upload_preset', UPLOAD_PRESET);
-      formData.append('folder', 'hardware-pos'); // Optional: organize images in a specific folder
-      
-      // Clean the product name to be URL/filename safe
       const safeName = (newProduct.name || 'product').replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
-      const publicId = `${safeName}_${newProduct.barcode || Date.now()}`;
-      formData.append('public_id', publicId);
 
-      const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, {
-        method: 'POST',
-        body: formData,
+      const uploadedUrls = await Promise.all(files.map(async (file, idx) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('upload_preset', UPLOAD_PRESET);
+        formData.append('folder', 'hardware-pos');
+        formData.append('public_id', `${safeName}_${newProduct.barcode || Date.now()}_${idx}`);
+
+        const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!response.ok) throw new Error('Cloudinary upload failed');
+
+        const data = await response.json();
+        return data.secure_url as string;
+      }));
+
+      setNewProduct((prev: Partial<Product>) => {
+        const currentImages = prev.images && prev.images.length > 0
+          ? prev.images
+          : (prev.image ? [prev.image] : []);
+        const images = [...new Set([...currentImages, ...uploadedUrls])];
+        return {
+          ...prev,
+          image: images[0] || '',
+          images,
+        };
       });
-
-      if (!response.ok) throw new Error('Cloudinary upload failed');
-
-      const data = await response.json();
-      setNewProduct(prev => ({ ...prev, image: data.secure_url }));
     } catch (err: any) {
       console.error(err);
       setError(err.message || 'Failed to upload image to Cloudinary. Please try again.');
@@ -111,6 +122,50 @@ export default function AdminProducts({ products, onPrintSingle, onPrintBatch }:
       setUploading(false);
     }
   };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []) as File[];
+    await uploadProductImages(files.filter(file => file.type.startsWith('image/')));
+    e.target.value = '';
+  };
+
+  const removeImage = (imageUrl: string) => {
+    setNewProduct((prev: Partial<Product>) => {
+      const currentImages = prev.images && prev.images.length > 0
+        ? prev.images
+        : (prev.image ? [prev.image] : []);
+      const images = currentImages.filter((url: string) => url !== imageUrl);
+      return {
+        ...prev,
+        image: images[0] || '',
+        images,
+      };
+    });
+  };
+
+  const getProductImages = (product: Partial<Product> | Product) => {
+    if (product.images && product.images.length > 0) return product.images;
+    return product.image ? [product.image] : [];
+  };
+
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingFiles(false);
+    const files = Array.from(e.dataTransfer.files || []) as File[];
+    await uploadProductImages(files.filter(file => file.type.startsWith('image/')));
+  };
+
+  const normalizeProductImages = (productToSave: Partial<Product>) => {
+    const images = getProductImages(productToSave);
+    return {
+      ...productToSave,
+      image: images[0] || '',
+      images,
+    };
+  };
+
+  const getPrimaryImage = (product: Partial<Product> | Product) => getProductImages(product)[0] || '';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -121,29 +176,33 @@ export default function AdminProducts({ products, onPrintSingle, onPrintBatch }:
         setError(`Barcode ${productToSave.barcode} is already in use.`); return;
       }
       if (productToSave.variations && productToSave.variations.length > 0) {
-        for (const v of productToSave.variations) {
+        for (const v of productToSave.variations as Variation[]) {
           if (v.barcode && !isBarcodeUnique(v.barcode, editingProduct?.id, v.id)) {
             setError(`Variation barcode ${v.barcode} is already in use.`); return;
           }
         }
-        productToSave.stock = productToSave.variations.reduce((acc, v) => acc + v.stock, 0);
-        productToSave.price = Math.min(...productToSave.variations.map(v => v.price));
-        productToSave.costPrice = Math.min(...productToSave.variations.map(v => v.costPrice || 0));
-        const validDiscounts = productToSave.variations.map(v => v.discountPrice).filter(p => p !== undefined && p > 0) as number[];
+        const variations = productToSave.variations as Variation[];
+        productToSave.stock = variations.reduce((acc: number, variation: Variation) => acc + variation.stock, 0);
+        productToSave.price = Math.min(...variations.map((variation: Variation) => variation.price));
+        productToSave.costPrice = Math.min(...variations.map((variation: Variation) => variation.costPrice || 0));
+        const validDiscounts = variations
+          .map((variation: Variation) => variation.discountPrice)
+          .filter((price: number | undefined): price is number => price !== undefined && price > 0);
         productToSave.discountPrice = validDiscounts.length > 0 ? Math.min(...validDiscounts) : 0;
-        productToSave.offerLabel = productToSave.variations.find(v => v.offerLabel)?.offerLabel || '';
-        productToSave.barcode = productToSave.variations.find(v => v.barcode)?.barcode || '';
+        productToSave.offerLabel = variations.find((variation: Variation) => variation.offerLabel)?.offerLabel || '';
+        productToSave.barcode = variations.find((variation: Variation) => variation.barcode)?.barcode || '';
       }
+      const normalizedProduct = normalizeProductImages(productToSave);
       if (editingProduct) {
-        await updateDoc(doc(db, 'products', editingProduct.id), productToSave);
+        await updateDoc(doc(db, 'products', editingProduct.id), normalizedProduct);
       } else {
-        const existing = products.find(p => p.barcode === productToSave.barcode && productToSave.barcode !== '');
+        const existing = products.find(p => p.barcode === normalizedProduct.barcode && normalizedProduct.barcode !== '');
         if (existing) {
           await updateDoc(doc(db, 'products', existing.id), {
-            stock: existing.stock + (productToSave.stock || 0),
+            stock: existing.stock + (normalizedProduct.stock || 0),
           });
         } else {
-          await addDoc(collection(db, 'products'), productToSave);
+          await addDoc(collection(db, 'products'), normalizedProduct);
         }
       }
       setIsAdding(false);
@@ -473,12 +532,50 @@ export default function AdminProducts({ products, onPrintSingle, onPrintBatch }:
               )}
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-bold text-neutral-400 uppercase">Product Image</label>
-                <div className="flex gap-4 items-center">
-                  <div className="w-20 h-20 bg-neutral-100 rounded-xl flex items-center justify-center overflow-hidden border border-dashed border-neutral-300">
-                    {newProduct.image ? <img src={newProduct.image} className="w-full h-full object-cover" /> : <Upload size={24} className="text-neutral-300" />}
+                <div
+                  className={`space-y-4 rounded-2xl border-2 border-dashed p-4 transition-all ${isDraggingFiles ? 'border-orange-500 bg-orange-50' : 'border-neutral-200 bg-neutral-50'}`}
+                  onDragEnter={e => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setIsDraggingFiles(true);
+                  }}
+                  onDragOver={e => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setIsDraggingFiles(true);
+                  }}
+                  onDragLeave={e => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setIsDraggingFiles(false);
+                  }}
+                  onDrop={handleDrop}
+                >
+                  <div className="flex flex-wrap gap-3">
+                    {getProductImages(newProduct).map((img) => (
+                      <div key={img} className="relative w-20 h-20 bg-white rounded-xl overflow-hidden border border-neutral-200 shadow-sm">
+                        <img src={img} className="w-full h-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => removeImage(img)}
+                          className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full p-1 hover:bg-red-700"
+                          title="Remove image"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ))}
+                    {getProductImages(newProduct).length === 0 && (
+                      <div className="w-full flex flex-col items-center justify-center gap-2 py-6 text-center">
+                        <Upload size={24} className="text-neutral-300" />
+                        <p className="text-xs font-medium text-neutral-500">Drag and drop photos here, or choose files below</p>
+                      </div>
+                    )}
                   </div>
-                  <input type="file" onChange={handleImageUpload} className="text-xs flex-1" />
-                  {uploading && <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-neutral-900" />}
+                  <div className="flex items-center gap-3">
+                    <input type="file" accept="image/*" multiple onChange={handleImageUpload} className="text-xs flex-1" />
+                    {uploading && <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-neutral-900" />}
+                  </div>
                 </div>
               </div>
               <div className="flex flex-col gap-1">
@@ -582,7 +679,7 @@ export default function AdminProducts({ products, onPrintSingle, onPrintBatch }:
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-4">
                     <div className="w-12 h-12 bg-neutral-100 rounded-xl flex items-center justify-center overflow-hidden border border-neutral-100">
-                      {p.image ? <img src={p.image} alt={p.name} className="w-full h-full object-cover" /> : <Package size={24} className="text-neutral-300" />}
+                      {getPrimaryImage(p) ? <img src={getPrimaryImage(p)} alt={p.name} className="w-full h-full object-cover" /> : <Package size={24} className="text-neutral-300" />}
                     </div>
                     <div>
                       <div className="font-bold text-neutral-900">{p.name}</div>
