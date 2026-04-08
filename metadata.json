@@ -1,5 +1,0 @@
-{
-  "name": "Hardware POS & Showcase",
-  "description": "A comprehensive POS system for hardware stores with Admin, Seller, and Premium Buyer Showcase screens. Features barcode scanning and real-time inventory management.",
-  "requestFramePermissions": ["camera"]
-}
