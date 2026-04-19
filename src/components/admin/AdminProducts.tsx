@@ -56,8 +56,6 @@ export default function AdminProducts({ products, onPrintSingle, onPrintBatch }:
         if (v.barcode === barcode) return false;
       }
     }
-    // Check if product barcode conflicts with variation barcode in the form
-    if (currentVariationId && newProduct.barcode === barcode && newProduct.barcode !== '') return false;
     return true;
   };
 
