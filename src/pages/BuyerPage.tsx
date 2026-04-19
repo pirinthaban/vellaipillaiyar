@@ -111,7 +111,9 @@ export default function BuyerPage() {
   };
 
   const cartTotal = cart.reduce((sum, item) => {
-    const price = item.variation ? item.variation.price : (item.product.discountPrice || item.product.price);
+    const price = item.variation
+      ? (item.variation.discountPrice || item.variation.price)
+      : (item.product.discountPrice || item.product.price);
     return sum + (price * item.quantity);
   }, 0);
 
@@ -469,8 +471,13 @@ export default function BuyerPage() {
                   </h2>
                   <div className="flex items-center gap-4 mb-6">
                     <span className="text-4xl font-black text-orange-500">
-                      Rs. {(activeVariation ? activeVariation.price : (selectedProduct.discountPrice || selectedProduct.price)).toFixed(2)}
+                      Rs. {(activeVariation
+                        ? (activeVariation.discountPrice || activeVariation.price)
+                        : (selectedProduct.discountPrice || selectedProduct.price)).toFixed(2)}
                     </span>
+                    {activeVariation && activeVariation.discountPrice && (
+                      <span className="text-xl text-white/30 line-through">Rs. {activeVariation.price.toFixed(2)}</span>
+                    )}
                     {!activeVariation && selectedProduct.discountPrice && (
                       <span className="text-xl text-white/30 line-through">Rs. {selectedProduct.price.toFixed(2)}</span>
                     )}
@@ -492,7 +499,12 @@ export default function BuyerPage() {
                           className={`p-4 rounded-2xl border text-left transition-all ${activeVariation?.id === v.id ? 'bg-orange-500/10 border-orange-500 shadow-[0_0_15px_rgba(249,115,22,0.15)]' : 'bg-white/5 border-white/10 hover:border-white/30'}`}
                         >
                           <div className="font-bold text-sm mb-1">{v.name}</div>
-                          <div className="text-xs text-white/60 mb-2">Rs. {v.price.toFixed(2)}</div>
+                          <div className="text-xs text-white/60 mb-2">
+                            <span className="text-white">Rs. {(v.discountPrice || v.price).toFixed(2)}</span>
+                            {v.discountPrice && (
+                              <span className="ml-2 text-white/40 line-through">Rs. {v.price.toFixed(2)}</span>
+                            )}
+                          </div>
                           <div className={`text-[10px] uppercase font-bold tracking-wider ${v.stock > 0 ? 'text-green-500' : 'text-red-500'}`}>
                             {v.stock > 0 ? `${v.stock} in stock` : 'Out of stock'}
                           </div>
@@ -671,7 +683,9 @@ export default function BuyerPage() {
                         </div>
                         <div className="flex justify-between items-center mt-2">
                           <span className="font-bold text-sm">
-                            Rs. {(item.variation ? item.variation.price : (item.product.discountPrice || item.product.price)).toFixed(2)}
+                            Rs. {(item.variation
+                              ? (item.variation.discountPrice || item.variation.price)
+                              : (item.product.discountPrice || item.product.price)).toFixed(2)}
                           </span>
                           <div className="flex items-center gap-3 bg-black/50 rounded-full border border-white/10 px-2 py-1">
                             <button onClick={() => updateCartQty(idx, -1)} className="p-1 hover:text-orange-500"><Minus size={12}/></button>
