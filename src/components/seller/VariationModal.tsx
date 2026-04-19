@@ -8,6 +8,10 @@ interface Props {
 }
 
 export default function VariationModal({ product, onAddVariation, onClose }: Props) {
+  const visibleVariations = (product.variations || []).filter(
+    (v) => v.published !== false && v.published !== 'false' && v.published !== 'hidden' && v.published !== 0
+  );
+
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-white p-8 rounded-2xl max-w-md w-full shadow-2xl">
@@ -19,7 +23,7 @@ export default function VariationModal({ product, onAddVariation, onClose }: Pro
         </div>
         <p className="text-sm text-neutral-500 mb-6 font-medium uppercase tracking-widest">{product.name}</p>
         <div className="space-y-3">
-          {product.variations?.map(v => (
+          {visibleVariations.map(v => (
             <button
               key={v.id}
               onClick={() => onAddVariation(product, v)}
@@ -42,6 +46,11 @@ export default function VariationModal({ product, onAddVariation, onClose }: Pro
               </div>
             </button>
           ))}
+          {visibleVariations.length === 0 && (
+            <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4 text-sm text-neutral-500">
+              No visible variants available for sale.
+            </div>
+          )}
         </div>
       </div>
     </div>

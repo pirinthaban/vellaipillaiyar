@@ -13,8 +13,9 @@ service cloud.firestore {
     //   - price: number (required, positive)
     //   - stock: number (required, non-negative)
     //   - image: string (optional, URL)
-    //   - barcode: string (optional, 1-50 chars)
+    //   - barcode: string (optional, 1-50 chars, IMMUTABLE after creation)
     //   - description: string (optional, 0-1000 chars)
+    //   - updatedAt: timestamp (optional, auto-tracked on updates)
     //
     // Collection: users
     // Fields:
@@ -66,10 +67,15 @@ service cloud.firestore {
       return currentUserRole() in ['admin', 'seller'] || isWhitelistedAdminEmail();
     }
 
+    function isBarcodeImmutable() {
+      // Barcode cannot be changed once set (immutable after creation)
+      return !('barcode' in resource.data) || (resource.data.barcode == request.resource.data.barcode);
+    }
+
     function isValidProduct(data) {
       let categories = ['paint', 'wiring', 'electrical', 'oils', 'pipeline', 'construction'];
       let units = ['qty', 'kg', 'lb', 'ft', 'm', 'yd', 'pc'];
-      let allowedFields = ['name', 'category', 'price', 'stock', 'image', 'images', 'barcode', 'description', 'discountPrice', 'offerLabel', 'unit', 'variations', 'costPrice', 'published'];
+      let allowedFields = ['name', 'category', 'price', 'stock', 'image', 'images', 'barcode', 'description', 'discountPrice', 'offerLabel', 'unit', 'variations', 'costPrice', 'published', 'updatedAt'];
 
       return data.keys().hasAll(['name', 'category', 'price', 'stock']) &&      
              data.keys().hasOnly(allowedFields) &&
@@ -86,7 +92,8 @@ service cloud.firestore {
              (!('unit' in data) || (data.unit in units)) &&
              (!('costPrice' in data) || (data.costPrice is number && data.costPrice >= 0)) &&
              (!('published' in data) || (data.published is bool)) &&
-             (!('variations' in data) || (data.variations is list && data.variations.size() <= 50));
+             (!('variations' in data) || (data.variations is list && data.variations.size() <= 50)) &&
+             (!('updatedAt' in data) || (data.updatedAt is timestamp));
     }
 
     function isValidSale(data) {
@@ -113,11 +120,12 @@ service cloud.firestore {
       // Public read for the showcase website
       allow read: if true;
       allow create: if isStaff() && isValidProduct(request.resource.data);
-      // Allow any authenticated user to update stock/variations (for POS checkout)
-      allow update: if isStaff() ||
+      // Allow updates with barcode protection (barcode is immutable)
+      allow update: if (isStaff() && isBarcodeImmutable()) ||
                       (isAuthenticated() &&
-                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock', 'variations']) &&
-                       request.resource.data.stock is number && request.resource.data.stock >= 0);
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock', 'variations', 'updatedAt']) &&
+                       request.resource.data.stock is number && request.resource.data.stock >= 0 &&
+                       isBarcodeImmutable());
       allow delete: if isStaff();
     }
 

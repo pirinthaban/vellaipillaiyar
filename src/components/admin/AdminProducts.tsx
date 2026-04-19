@@ -33,6 +33,9 @@ export default function AdminProducts({ products, onPrintSingle, onPrintBatch }:
   const [bulkPublished, setBulkPublished] = useState<'no-change' | 'visible' | 'hidden'>('no-change');
   const [stockAdjustProduct, setStockAdjustProduct] = useState<Product | null>(null);
   const [stockIncreaseQty, setStockIncreaseQty] = useState(0);
+  const [showVariantStockModal, setShowVariantStockModal] = useState(false);
+  const [variantStockUpdates, setVariantStockUpdates] = useState<Record<string, number>>({});
+  const [variantVisibilityUpdates, setVariantVisibilityUpdates] = useState<Record<string, boolean>>({});
 
   const isProductVisible = (published: unknown) => {
     if (published === false || published === 'false' || published === 'hidden' || published === 0) return false;
@@ -42,17 +45,19 @@ export default function AdminProducts({ products, onPrintSingle, onPrintBatch }:
   const isBarcodeUnique = (barcode: string, currentProductId?: string, currentVariationId?: string) => {
     if (!barcode) return true;
     for (const p of products) {
-      if (p.id === currentProductId) continue;
+      if (p.id === currentProductId) continue; // Skip the current product being edited
       if (p.barcode === barcode) return false;
       if (p.variations) for (const v of p.variations) if (v.barcode === barcode) return false;
     }
+    // For new products, check variations in the form
     if (newProduct.variations) {
       for (const v of newProduct.variations) {
-        if (v.id === currentVariationId) continue;
+        if (v.id === currentVariationId) continue; // Skip the current variation being edited
         if (v.barcode === barcode) return false;
       }
     }
-    if (currentVariationId && newProduct.barcode === barcode) return false;
+    // Check if product barcode conflicts with variation barcode in the form
+    if (currentVariationId && newProduct.barcode === barcode && newProduct.barcode !== '') return false;
     return true;
   };
 
@@ -172,15 +177,29 @@ export default function AdminProducts({ products, onPrintSingle, onPrintBatch }:
     setError(null);
     try {
       const productToSave = { ...newProduct };
-      if (productToSave.barcode && !isBarcodeUnique(productToSave.barcode, editingProduct?.id)) {
-        setError(`Barcode ${productToSave.barcode} is already in use.`); return;
-      }
-      if (productToSave.variations && productToSave.variations.length > 0) {
-        for (const v of productToSave.variations as Variation[]) {
-          if (v.barcode && !isBarcodeUnique(v.barcode, editingProduct?.id, v.id)) {
-            setError(`Variation barcode ${v.barcode} is already in use.`); return;
+      // Skip validation for stock-only updates (just updating inventory)
+      const hasProductChanges = editingProduct && (
+        productToSave.name !== editingProduct.name ||
+        productToSave.category !== editingProduct.category ||
+        productToSave.description !== editingProduct.description ||
+        productToSave.price !== editingProduct.price ||
+        productToSave.barcode !== editingProduct.barcode
+      );
+      
+      // Only validate barcodes if updating product details, not just stock
+      if (!editingProduct || hasProductChanges) {
+        if (productToSave.barcode && (!productToSave.variations || productToSave.variations.length === 0) && !isBarcodeUnique(productToSave.barcode, editingProduct?.id)) {
+          setError(`Barcode ${productToSave.barcode} is already in use.`); return;
+        }
+        if (productToSave.variations && productToSave.variations.length > 0) {
+          for (const v of productToSave.variations as Variation[]) {
+            if (v.barcode && !isBarcodeUnique(v.barcode, editingProduct?.id, v.id)) {
+              setError(`Variation barcode ${v.barcode} is already in use.`); return;
+            }
           }
         }
+      }
+      if (productToSave.variations && productToSave.variations.length > 0) {
         const variations = productToSave.variations as Variation[];
         productToSave.stock = variations.reduce((acc: number, variation: Variation) => acc + variation.stock, 0);
         productToSave.price = Math.min(...variations.map((variation: Variation) => variation.price));
@@ -307,8 +326,55 @@ export default function AdminProducts({ products, onPrintSingle, onPrintBatch }:
       await updateDoc(doc(db, 'products', stockAdjustProduct.id), {
         stock: (stockAdjustProduct.stock || 0) + qty,
       });
+      setShowVariantStockModal(false);
       setStockAdjustProduct(null);
       setStockIncreaseQty(0);
+      setError(null);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `products/${stockAdjustProduct.id}`);
+    }
+  };
+
+  const openVariantStockModal = (product: Product) => {
+    if (!product.variations || product.variations.length === 0) {
+      setError('This product has no variations.');
+      return;
+    }
+    setStockIncreaseQty(0);
+    setStockAdjustProduct(product);
+    const initialUpdates: Record<string, number> = {};
+    const initialVisibility: Record<string, boolean> = {};
+    product.variations.forEach(v => {
+      initialUpdates[v.id || ''] = v.stock || 0;
+      initialVisibility[v.id || ''] = v.published !== false; // Default to visible
+    });
+    setVariantStockUpdates(initialUpdates);
+    setVariantVisibilityUpdates(initialVisibility);
+    setShowVariantStockModal(true);
+  };
+
+  const applyVariantStockUpdates = async () => {
+    if (!stockAdjustProduct || !stockAdjustProduct.variations) return;
+    
+    try {
+      const updatedVariations = stockAdjustProduct.variations.map((v: Variation) => ({
+        ...v,
+        stock: variantStockUpdates[v.id || ''] ?? v.stock,
+        published: variantVisibilityUpdates[v.id || ''] ?? v.published
+      }));
+      
+      // Recalculate product-level stock
+      const totalStock = updatedVariations.reduce((acc: number, v: Variation) => acc + (v.stock || 0), 0);
+      
+      await updateDoc(doc(db, 'products', stockAdjustProduct.id), {
+        variations: updatedVariations,
+        stock: totalStock
+      });
+      
+      setShowVariantStockModal(false);
+      setStockAdjustProduct(null);
+      setVariantStockUpdates({});
+      setVariantVisibilityUpdates({});
       setError(null);
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, `products/${stockAdjustProduct.id}`);
@@ -721,16 +787,27 @@ export default function AdminProducts({ products, onPrintSingle, onPrintBatch }:
                 </td>
                 <td className="px-6 py-4">
                   <div className="flex gap-1 flex-wrap">
-                    <button
-                      onClick={() => {
-                        setStockAdjustProduct(p);
-                        setStockIncreaseQty(0);
-                      }}
-                      className="px-3 py-2 rounded-lg transition-all text-neutral-700 border border-neutral-200 hover:bg-neutral-100 text-xs font-semibold"
-                      title="Increase Stock"
-                    >
-                      Stock +
-                    </button>
+                    {p.variations && p.variations.length > 0 ? (
+                      <button
+                        onClick={() => openVariantStockModal(p)}
+                        className="px-3 py-2 rounded-lg transition-all text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 text-xs font-semibold"
+                        title="Update Variant Stock"
+                      >
+                        Variants
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          setShowVariantStockModal(false);
+                          setStockAdjustProduct(p);
+                          setStockIncreaseQty(0);
+                        }}
+                        className="px-3 py-2 rounded-lg transition-all text-neutral-700 border border-neutral-200 hover:bg-neutral-100 text-xs font-semibold"
+                        title="Increase Stock"
+                      >
+                        Stock +
+                      </button>
+                    )}
                     <button onClick={() => toggleVisibility(p)} className={`p-2 rounded-lg transition-all ${isProductVisible(p.published) ? 'text-green-600 hover:bg-green-50' : 'text-neutral-300 hover:bg-neutral-100'}`} title={isProductVisible(p.published) ? 'Visible' : 'Hidden'}>
                       <Search size={18} />
                     </button>
@@ -756,7 +833,7 @@ export default function AdminProducts({ products, onPrintSingle, onPrintBatch }:
         </div>
       </div>
 
-      {stockAdjustProduct && (
+      {stockAdjustProduct && !showVariantStockModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl">
             <h3 className="text-xl font-bold text-neutral-900">Increase Stock</h3>
@@ -777,7 +854,82 @@ export default function AdminProducts({ products, onPrintSingle, onPrintBatch }:
 
             <div className="flex gap-3 mt-6">
               <button onClick={applyStockIncrease} className="flex-1 bg-neutral-900 text-white py-3 rounded-xl font-bold hover:bg-neutral-800 transition-all">Update Stock</button>
-              <button onClick={() => { setStockAdjustProduct(null); setStockIncreaseQty(0); }} className="flex-1 bg-neutral-100 text-neutral-700 py-3 rounded-xl font-bold hover:bg-neutral-200 transition-all">Cancel</button>
+              <button onClick={() => { setShowVariantStockModal(false); setStockAdjustProduct(null); setStockIncreaseQty(0); }} className="flex-1 bg-neutral-100 text-neutral-700 py-3 rounded-xl font-bold hover:bg-neutral-200 transition-all">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Variant Stock Update Modal */}
+      {showVariantStockModal && stockAdjustProduct && stockAdjustProduct.variations && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-8 max-w-2xl w-full shadow-2xl max-h-[90vh] overflow-y-auto">
+            <h3 className="text-xl font-bold text-neutral-900">Update Variant Stock & Visibility</h3>
+            <p className="text-sm text-neutral-500 mt-1">{stockAdjustProduct.name}</p>
+
+            <div className="space-y-4 mt-6">
+              {stockAdjustProduct.variations.map((variant) => {
+                const isVisible = variantVisibilityUpdates[variant.id || ''] ?? (variant.published !== false);
+                return (
+                  <div key={variant.id} className="p-4 border border-neutral-200 rounded-xl hover:border-neutral-300 transition-all">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1">
+                        <p className="font-bold text-neutral-900">{variant.name || `Variant ${variant.id}`}</p>
+                        <div className="flex gap-4 mt-2 text-xs text-neutral-500">
+                          <span>Price: Rs. {variant.price}</span>
+                          {variant.barcode && <span>Barcode: {variant.barcode}</span>}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="flex flex-col items-end gap-2">
+                          {/* Stock Input */}
+                          <div className="flex flex-col items-end">
+                            <label className="text-xs font-bold text-neutral-400 uppercase mb-1">Stock</label>
+                            <input
+                              type="number"
+                              min={0}
+                              value={variantStockUpdates[variant.id || ''] ?? variant.stock ?? 0}
+                              onChange={(e) => setVariantStockUpdates({
+                                ...variantStockUpdates,
+                                [variant.id || '']: Math.max(0, parseInt(e.target.value) || 0)
+                              })}
+                              className="w-20 p-2 border border-neutral-200 rounded-lg bg-neutral-50 text-right font-bold"
+                            />
+                            <span className="text-[10px] text-neutral-400 mt-1">{stockAdjustProduct.unit || 'qty'}</span>
+                          </div>
+                          
+                          {/* Visibility Toggle */}
+                          <button
+                            type="button"
+                            onClick={() => setVariantVisibilityUpdates({
+                              ...variantVisibilityUpdates,
+                              [variant.id || '']: !isVisible
+                            })}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase transition-all ${isVisible ? 'bg-green-50 text-green-700 border border-green-200 hover:bg-green-100' : 'bg-red-50 text-red-700 border border-red-200 hover:bg-red-100'}`}
+                          >
+                            {isVisible ? '✓ Visible' : '✕ Hidden'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex gap-3 mt-8">
+              <button 
+                onClick={applyVariantStockUpdates} 
+                className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition-all"
+              >
+                Apply Changes
+              </button>
+              <button 
+                onClick={() => { setShowVariantStockModal(false); setStockAdjustProduct(null); setVariantStockUpdates({}); setVariantVisibilityUpdates({}); }} 
+                className="flex-1 bg-neutral-100 text-neutral-700 py-3 rounded-xl font-bold hover:bg-neutral-200 transition-all"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>

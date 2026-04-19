@@ -32,6 +32,11 @@ export default function SellerPage() {
     return true;
   };
 
+  const isVariationVisible = (published: unknown) => {
+    if (published === false || published === 'false' || published === 'hidden' || published === 0) return false;
+    return true;
+  };
+
   // Convert different phone formats to one canonical local format (0XXXXXXXXX)
   const normalizePhone = (input: string) => {
     const digits = (input || '').replace(/\D/g, '');
@@ -245,12 +250,15 @@ export default function SellerPage() {
   const handleScan = (barcode: string) => {
     const product = products.find(p => p.barcode === barcode);
     if (product) {
-      product.variations && product.variations.length > 0 ? setVariationModal(product) : addToCart(product);
+      const visibleVariations = (product.variations || []).filter(v => isVariationVisible(v.published));
+      visibleVariations.length > 0
+        ? setVariationModal({ ...product, variations: visibleVariations })
+        : addToCart(product);
       setShowScanner(false);
       return;
     }
     for (const p of products) {
-      const variation = p.variations?.find(v => v.barcode === barcode);
+      const variation = p.variations?.find(v => isVariationVisible(v.published) && v.barcode === barcode);
       if (variation) { addToCart(p, variation); setShowScanner(false); return; }
     }
   };
@@ -417,10 +425,22 @@ const clean: any = { productId: item.productId, name: item.name, price: item.pri
 
   const categories: string[] = ['All', ...Array.from(new Set(products.map(p => p.category))).filter((c): c is string => Boolean(c))];
 
-  const filteredProducts = products.filter(p => {
-    const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) || p.category.toLowerCase().includes(search.toLowerCase()) || p.barcode?.includes(search);
-    return isProductVisible(p.published) && matchesSearch && (selectedCategory === 'All' || p.category === selectedCategory);
-  });
+  const filteredProducts = products
+    .map((p) => {
+      const visibleVariations = (p.variations || []).filter((v) => isVariationVisible(v.published));
+      if (p.variations && p.variations.length > 0) {
+        return {
+          ...p,
+          variations: visibleVariations,
+          stock: visibleVariations.reduce((sum, v) => sum + (v.stock || 0), 0),
+        } as Product;
+      }
+      return p;
+    })
+    .filter(p => {
+      const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) || p.category.toLowerCase().includes(search.toLowerCase()) || p.barcode?.includes(search);
+      return isProductVisible(p.published) && matchesSearch && (selectedCategory === 'All' || p.category === selectedCategory) && (!p.variations || p.variations.length > 0);
+    });
 
   // ─── Render ────────────────────────────────────────────────────────────────
 

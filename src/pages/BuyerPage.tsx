@@ -28,6 +28,11 @@ export default function BuyerPage() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [activeVariation, setActiveVariation] = useState<any>(null);
 
+  const isVariationVisible = (published: unknown) => {
+    if (published === false || published === 'false' || published === 'hidden' || published === 0) return false;
+    return true;
+  };
+
   // VP System State
   const [isVpModalOpen, setIsVpModalOpen] = useState(false);
   const [vpPhone, setVpPhone] = useState('');
@@ -49,11 +54,25 @@ export default function BuyerPage() {
     return () => unsubscribe();
   }, []);
 
-  const filteredProducts = products.filter(p => 
-    p.published !== false &&
-    (selectedCategory === 'all' || p.category === selectedCategory) &&
-    (p.name.toLowerCase().includes(search.toLowerCase()) || p.description?.toLowerCase().includes(search.toLowerCase()))
-  );
+  const filteredProducts = products
+    .map((p) => {
+      const visibleVariations = (p.variations || []).filter((v) => isVariationVisible(v.published));
+      if (p.variations && p.variations.length > 0) {
+        const visibleStock = visibleVariations.reduce((sum, v) => sum + (v.stock || 0), 0);
+        return {
+          ...p,
+          variations: visibleVariations,
+          stock: visibleStock,
+        } as Product;
+      }
+      return p;
+    })
+    .filter((p) =>
+      p.published !== false &&
+      (selectedCategory === 'all' || p.category === selectedCategory) &&
+      (p.name.toLowerCase().includes(search.toLowerCase()) || p.description?.toLowerCase().includes(search.toLowerCase())) &&
+      (!p.variations || p.variations.length > 0)
+    );
 
   const addToCart = () => {
     if (!selectedProduct) return;

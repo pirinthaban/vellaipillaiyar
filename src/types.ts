@@ -11,6 +11,7 @@ export interface Variation {
   discountPrice?: number;
   costPrice?: number;
   offerLabel?: string;
+  published?: boolean;
 }
 
 export interface Product {
