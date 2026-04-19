@@ -80,10 +80,10 @@ export default function AdminProducts({ products, onPrintSingle, onPrintBatch }:
     if (files.length === 0) return;
     setUploading(true);
     try {
-      const CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || 'YOUR_CLOUD_NAME_HERE';
-      const UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || 'YOUR_UNSIGNED_PRESET_HERE';
+      const CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || 'dundgrigj';
+      const UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || 'vellaipillaiyar';
 
-      if (CLOUD_NAME === 'YOUR_CLOUD_NAME_HERE' || UPLOAD_PRESET === 'YOUR_UNSIGNED_PRESET_HERE') {
+      if (!CLOUD_NAME || !UPLOAD_PRESET) {
         throw new Error('Please configure your Cloudinary Cloud Name & Upload Preset in code or .env');
       }
 
@@ -380,8 +380,38 @@ export default function AdminProducts({ products, onPrintSingle, onPrintBatch }:
   };
 
   const exportToCSV = () => {
-    const headers = ['Name', 'Category', 'Cost Price', 'Sell Price', 'Discount Price', 'Stock', 'Barcode', 'Description'];
-    const rows = products.map(p => [p.name, p.category, (p.costPrice || 0).toString(), p.price.toString(), (p.discountPrice || 0).toString(), p.stock.toString(), p.barcode || '', p.description || '']);
+    const headers = ['Product Name', 'Variant Name', 'Category', 'Unit', 'Cost Price', 'Sell Price', 'Discount Price', 'Stock', 'Barcode', 'Visible', 'Description'];
+    const rows = products.flatMap((p) => {
+      if (p.variations && p.variations.length > 0) {
+        return p.variations.map((v) => [
+          p.name,
+          v.name || '',
+          p.category,
+          v.unit || p.unit || 'qty',
+          (v.costPrice || 0).toString(),
+          (v.price || 0).toString(),
+          (v.discountPrice || 0).toString(),
+          (v.stock || 0).toString(),
+          v.barcode || '',
+          isProductVisible(v.published) ? 'Visible' : 'Hidden',
+          p.description || '',
+        ]);
+      }
+
+      return [[
+        p.name,
+        '',
+        p.category,
+        p.unit || 'qty',
+        (p.costPrice || 0).toString(),
+        (p.price || 0).toString(),
+        (p.discountPrice || 0).toString(),
+        (p.stock || 0).toString(),
+        p.barcode || '',
+        isProductVisible(p.published) ? 'Visible' : 'Hidden',
+        p.description || '',
+      ]];
+    });
     const csv = [headers, ...rows].map(r => r.map(c => `"${c.replace(/"/g, '""')}"`).join(',')).join('\n');
     const link = document.createElement('a');
     link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
